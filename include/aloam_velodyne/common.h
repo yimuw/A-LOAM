@@ -39,6 +39,7 @@
 #include <cmath>
 
 #include <pcl/point_types.h>
+#include <eigen3/Eigen/Dense>
 
 typedef pcl::PointXYZI PointType;
 
@@ -51,3 +52,25 @@ inline double deg2rad(double degrees)
 {
   return degrees * M_PI / 180.0;
 }
+
+
+Eigen::Matrix4d qtToMat(const Eigen::Quaterniond &q, const Eigen::Vector3d &t)
+{
+  Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+  Eigen::Matrix3d R = q.toRotationMatrix();
+  T.block(0, 0, 3, 3) = R;
+  T.block(0, 3, 3, 1) = t;
+
+  return T;
+}
+
+void MatToqt(const Eigen::Matrix4d &T, Eigen::Quaterniond &q, Eigen::Vector3d &t)
+{
+  Eigen::Matrix3d R = T.block(0, 0, 3, 3);
+  q = Eigen::Quaterniond(R);
+  q.normalize();
+
+  t = T.block(0, 3, 3, 1);
+}
+
+

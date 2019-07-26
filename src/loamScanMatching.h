@@ -319,10 +319,11 @@ public:
                 TicToc t_solver;
                 ceres::Solver::Options options;
                 options.linear_solver_type = ceres::DENSE_QR;
-                options.max_num_iterations = 4;
+                options.max_num_iterations = 10;
                 options.minimizer_progress_to_stdout = false;
                 ceres::Solver::Summary summary;
                 ceres::Solve(options, &problem, &summary);
+                std::cout << summary.BriefReport() << std::endl;
                 printf("solver time %f ms \n", t_solver.toc());
                 std::cout << " para_t: " <<  para_t[0] << ", " <<  para_t[1] << ", " <<  para_t[2] << std::endl;
             }
@@ -365,4 +366,3 @@ private:
 
 
 };
-

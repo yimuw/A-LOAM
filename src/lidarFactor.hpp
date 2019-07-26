@@ -1,5 +1,6 @@
 // Author:   Tong Qin               qintonguav@gmail.com
 // 	         Shaozu Cao 		    saozu.cao@connect.ust.hk
+#pragma once
 
 #include <ceres/ceres.h>
 #include <ceres/rotation.h>
@@ -53,6 +54,45 @@ struct LidarEdgeFactor
 	Eigen::Vector3d curr_point, last_point_a, last_point_b;
 	double s;
 };
+
+
+// P2 = T * P1;
+struct LidarPointFactor
+{
+	LidarPointFactor(Eigen::Vector3d curr_point_, Eigen::Vector3d point2)
+		: curr_point_(curr_point_), point2_(point2)
+	{}
+
+	template <typename T>
+	bool operator()(const T *q, const T *t, T *residual) const
+	{
+		Eigen::Quaternion<T> q_last_curr{q[3], q[0], q[1], q[2]};
+		Eigen::Matrix<T, 3, 1> t_last_curr{t[0], t[1], t[2]};
+
+		Eigen::Matrix<T, 3, 1> curr_point_T = curr_point_.template cast <T>();
+		Eigen::Matrix<T, 3, 1> point2T = point2_.template cast <T>();
+
+		Eigen::Matrix<T, 3, 1> point2Pred = q_last_curr * curr_point_T + t_last_curr;
+
+		T weight = T{0.1};
+		residual[0] = weight * (point2Pred[0] - point2T[0]);
+		residual[1] = weight * (point2Pred[1] - point2T[1]);
+		residual[2] = weight * (point2Pred[2] - point2T[2]);
+
+		return true;
+	}
+
+	static ceres::CostFunction *Create(Eigen::Vector3d point1, Eigen::Vector3d point2)
+	{
+		return (new ceres::AutoDiffCostFunction<
+				LidarPointFactor, 3, 4, 3>(
+			new LidarPointFactor(point1, point2)));
+	}
+
+	Eigen::Vector3d curr_point_;
+	Eigen::Vector3d point2_;
+};
+
 
 struct LidarPlaneFactor
 {

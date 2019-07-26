@@ -25,6 +25,7 @@
 
 #include "loamFeature.h"
 #include "loamScanMatching.h"
+#include "laggedMatcher.h"
 
 
 std::vector<float> read_lidar_data(const std::string lidar_data_path)
@@ -179,7 +180,12 @@ int main(int argc, char** argv)
     OdometryPublisher gt_pub("/odometry_gt", "/path_gt", "/camera_init", "/ground_truth", n);
 
 
-    LOAMScanMatching matcher;
+    // LOAMScanMatching matcher;
+    lagged::LaggedScanMatching matcher;
+
+    // // TODO: size of pose = size of lidar bin + 1??
+    // std::getline(ground_truth_file, line);
+
     while (std::getline(timestamp_file, line) && ros::ok())
     {
         // float timestamp = stof(line);
@@ -224,6 +230,7 @@ int main(int argc, char** argv)
         std::cout << "extractFeatures..." << std::endl;
         // LidarFeatures features = LidarFeatureExtraction().extractFeatures(lines);
         LidarFeatures features = LidarFeatureExtraction().extractFeaturesSimple(lines);
+
 
         flat_pub.publish_pc(*features.surfPointsFlat);
         less_flat_pub.publish_pc(*features.surfPointsLessFlat);

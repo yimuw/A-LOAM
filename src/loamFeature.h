@@ -415,6 +415,8 @@ public:
         std::cout << "laserCloudScans.size(): " << laserCloudScans.size() << std::endl;
 
         LidarFeatures features;
+
+        std::vector<PointType> all_points;
         
         for (int i = 0; i < N_SCANS; i++)
         { 
@@ -425,15 +427,28 @@ public:
                 const double r = ((double) rand() / (RAND_MAX));
 
                 // std::cout << "dist:" << dist << "  " << r << std::endl;
-                constexpr double DIST_MAX = 200;
+                constexpr double DIST_MAX = 300;
 
+                // if(dist > 10)
+                // {
+                //     // features.surfPointsFlat->push_back(p);
+                //     all_points.push_back(p);
+                // }
+                // else 
                 if(dist / DIST_MAX > r)
                 {
-                    features.surfPointsFlat->push_back(p);
+                    // features.surfPointsFlat->push_back(p);
+                    all_points.push_back(p);
                 }
                 
             }
         }
+
+        for(const auto &p : all_points)
+        {
+            features.surfPointsFlat->push_back(p);
+        }
+
 
         std::cout << "surfPointsFlat.size()        :" << features.surfPointsFlat->size() << std::endl;
         std::cout << "surfPointsLessFlat.size()    :" << features.surfPointsLessFlat->size() << std::endl;
