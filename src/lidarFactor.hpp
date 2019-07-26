@@ -84,7 +84,20 @@ struct LidarPlaneFactor
 		Eigen::Matrix<T, 3, 1> lp;
 		lp = q_last_curr * cp + t_last_curr;
 
+		T dist = (lp - lpj).dot(ljm);
+
+		if(false)
+		{
+			// "robust"
+			if(dist > T{0.5})
+			{
+				dist = T{0.};
+			}
+		}
+
 		residual[0] = (lp - lpj).dot(ljm);
+
+
 
 		return true;
 	}

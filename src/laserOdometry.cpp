@@ -298,6 +298,8 @@ int main(int argc, char **argv)
                     // find correspondence for corner features
                     for (int i = 0; i < cornerPointsSharpNum; ++i)
                     {
+                        // break;
+
                         TransformToStart(&(cornerPointsSharp->points[i]), &pointSel);
                         kdtreeCornerLast->nearestKSearch(pointSel, 1, pointSearchInd, pointSearchSqDis);
 

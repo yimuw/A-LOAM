@@ -576,6 +576,8 @@ void process()
 
 					for (int i = 0; i < laserCloudCornerStackNum; i++)
 					{
+						// break;
+						
 						pointOri = laserCloudCornerStack->points[i];
 						//double sqrtDis = pointOri.x * pointOri.x + pointOri.y * pointOri.y + pointOri.z * pointOri.z;
 						pointAssociateToMap(&pointOri, &pointSel);
