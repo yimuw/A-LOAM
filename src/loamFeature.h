@@ -67,21 +67,26 @@ public:
 
 
         int cloudSize = laserCloudIn.points.size();
-        float startOri = -atan2(laserCloudIn.points[0].y, laserCloudIn.points[0].x);
-        float endOri = -atan2(laserCloudIn.points[cloudSize - 1].y,
-                            laserCloudIn.points[cloudSize - 1].x) + 2 * M_PI;
+        // float startOri = -atan2(laserCloudIn.points[0].y, laserCloudIn.points[0].x);
+        // float endOri = -atan2(laserCloudIn.points[cloudSize - 1].y,
+        //                     laserCloudIn.points[cloudSize - 1].x) + 2 * M_PI;
 
-        if (endOri - startOri > 3 * M_PI)
-        {
-            endOri -= 2 * M_PI;
-        }
-        else if (endOri - startOri < M_PI)
-        {
-            endOri += 2 * M_PI;
-        }
+        // std::cout << "startOri:" << atan2(laserCloudIn.points[0].y, laserCloudIn.points[0].x) << std::endl;
+        // std::cout << "endOri:" << atan2(laserCloudIn.points[cloudSize - 1].y,
+        //                     laserCloudIn.points[cloudSize - 1].x) << std::endl;
+
+
+        // if (endOri - startOri > 3 * M_PI)
+        // {
+        //     endOri -= 2 * M_PI;
+        // }
+        // else if (endOri - startOri < M_PI)
+        // {
+        //     endOri += 2 * M_PI;
+        // }
         //printf("end Ori %f\n", endOri);
 
-        bool halfPassed = false;
+        // bool halfPassed = false;
         int count = cloudSize;
         PointType point;
         std::vector<pcl::PointCloud<PointType>> laserCloudScans(N_SCANS);
@@ -133,46 +138,115 @@ public:
             }
             //printf("angle %f scanID %d \n", angle, scanID);
 
-            float ori = -atan2(point.y, point.x);
-            if (!halfPassed)
-            { 
-                if (ori < startOri - M_PI / 2)
-                {
-                    ori += 2 * M_PI;
-                }
-                else if (ori > startOri + M_PI * 3 / 2)
-                {
-                    ori -= 2 * M_PI;
-                }
+            // float ori = -atan2(point.y, point.x);
+            // if (!halfPassed)
+            // { 
+            //     if (ori < startOri - M_PI / 2)
+            //     {
+            //         ori += 2 * M_PI;
+            //     }
+            //     else if (ori > startOri + M_PI * 3 / 2)
+            //     {
+            //         ori -= 2 * M_PI;
+            //     }
 
-                if (ori - startOri > M_PI)
-                {
-                    halfPassed = true;
-                }
-            }
-            else
-            {
-                ori += 2 * M_PI;
-                if (ori < endOri - M_PI * 3 / 2)
-                {
-                    ori += 2 * M_PI;
-                }
-                else if (ori > endOri + M_PI / 2)
-                {
-                    ori -= 2 * M_PI;
-                }
-            }
+            //     if (ori - startOri > M_PI)
+            //     {
+            //         halfPassed = true;
+            //     }
+            // }
+            // else
+            // {
+            //     ori += 2 * M_PI;
+            //     if (ori < endOri - M_PI * 3 / 2)
+            //     {
+            //         ori += 2 * M_PI;
+            //     }
+            //     else if (ori > endOri + M_PI / 2)
+            //     {
+            //         ori -= 2 * M_PI;
+            //     }
+            // }
 
-            float relTime = (ori - startOri) / (endOri - startOri);
+            float relTime = 0; // (ori - startOri) / (endOri - startOri);
 
             const double scanPeriod = 0.1;
             point.intensity = scanID + scanPeriod * relTime;
 
+            // std::cout << "id:" << scanID << std::endl;
+            // std::cout << "azu: " << atan2(laserCloudIn.points[i].y, laserCloudIn.points[i].x) << std::endl;
+            
             laserCloudScans[scanID].push_back(point); 
         }
         
         cloudSize = count;
         printf("points size %d \n", cloudSize);
+        printf("prepare time %f \n", t_prepare.toc());
+
+        return laserCloudScans;
+    }
+
+    // make a copy of pc
+    std::vector<pcl::PointCloud<PointType>> convertScanToVectorOfLinesAzi(pcl::PointCloud<PointType> laserCloudIn)
+    {    
+        TicToc t_prepare;
+        std::vector<int> scanStartInd(N_SCANS, 0);
+        std::vector<int> scanEndInd(N_SCANS, 0);
+        std::vector<int> indices;
+
+        pcl::removeNaNFromPointCloud(laserCloudIn, laserCloudIn, indices);
+
+        constexpr double MINIMUM_RANGE = 1.;
+        this->removeClosedPointCloud(laserCloudIn, laserCloudIn, MINIMUM_RANGE);
+
+
+        int cloudSize = laserCloudIn.points.size();
+
+        PointType point;
+        std::vector<pcl::PointCloud<PointType>> laserCloudScans(N_SCANS);
+
+        float last_azi = 1e-8;
+        double azi_accu = 0;
+        int scanID = 0;
+        for (int i = 0; i < cloudSize; i++)
+        {
+
+            point.x = laserCloudIn.points[i].x;
+            point.y = laserCloudIn.points[i].y;
+            point.z = laserCloudIn.points[i].z;
+
+            float azi = std::atan2(point.y, point.x);
+            if(azi < 0)
+            {
+                azi += 2 * M_PI;
+            }
+  
+            if( (M_PI < last_azi && last_azi < 2 * M_PI) && (azi > 0 && azi < M_PI) && azi_accu > 2 * M_PI - 1)
+            {
+                scanID++;
+                // std::cout << "i:" << i  << " azi_accu:" << azi_accu << std::endl;
+                azi_accu = 0;
+                last_azi = 1e-8;
+            }
+
+            azi_accu += azi - last_azi;
+
+            // std::cout << "azi:" << azi << " last_azi:" << last_azi << " azi_accu:" << azi_accu << std::endl;
+            last_azi = azi;
+            
+
+            point.intensity = scanID;
+
+            if(scanID == N_SCANS)
+            {
+                std::cout << "WARNING!!! scanID > N_SCANS" << "  i:" << i << std::endl;
+                break;
+            }
+
+            laserCloudScans.at(scanID).push_back(point); 
+        }
+
+        std::cout << " scanID end:" << scanID << std::endl;
         printf("prepare time %f \n", t_prepare.toc());
 
         return laserCloudScans;
@@ -239,6 +313,22 @@ public:
             cloudSortInd[i] = i;
             cloudNeighborPicked[i] = 0;
             cloudLabel[i] = 0;
+        }
+
+        // continuous checks
+        for (size_t i = 5; i < cloudSize - 4; i++)
+        { 
+            Eigen::Vector3d p1{laserCloud->points[i].x, laserCloud->points[i].y, laserCloud->points[i].z};
+            Eigen::Vector3d p2{laserCloud->points[i + 1].x, laserCloud->points[i + 1].y, laserCloud->points[i + 1].z};
+
+            if( (p1 - p2).norm() > 0.3)
+            {
+                for (int l = 0; l <= 5; l++)
+                {
+                    cloudNeighborPicked[i + l] = 1;
+                    cloudNeighborPicked[i - l] = 1;
+                }
+            }
         }
 
         std::cout << "compute curv done." << std::endl;
@@ -404,6 +494,88 @@ public:
     }
 
 
+    LidarFeatures extractFeatures2(std::vector<pcl::PointCloud<PointType>> &laserCloudScans)
+    {
+
+        TicToc t_pts;
+
+        LidarFeatures features;
+
+        for (int idx_s = 0; idx_s < N_SCANS; idx_s++)
+        {
+            // std::cout << "idx_s: " << idx_s << std::endl;
+            // if(idx_s != 20)
+            // {
+            //     continue;
+            // }
+
+            if(laserCloudScans[idx_s].points.size() < 10)
+            {
+                continue;
+            }
+
+            auto & laserCloud = laserCloudScans[idx_s];
+
+            for(size_t i = 5; i < laserCloud.points.size() - 5; ++i)
+            {
+                Eigen::Vector3f p0{laserCloud.points[i].x, laserCloud.points[i].y, laserCloud.points[i].z};
+
+                // const auto point = laserCloud.points[i];
+                // float angle = atan(point.z / sqrt(point.x * point.x + point.y * point.y)) * 180 / M_PI;
+                // std::cout << "angle: " << angle << std::endl;
+
+                Eigen::Vector3f curv_sum {0., 0, 0};
+                bool toFar = false;
+
+                Eigen::Vector3f pr_prev{laserCloud.points.at(i).x, laserCloud.points[i].y, laserCloud.points[i].z};
+                Eigen::Vector3f pl_prev{laserCloud.points.at(i).x, laserCloud.points[i].y, laserCloud.points[i].z};
+
+                for(size_t j = 1; j <= 5; ++j)
+                {
+                    Eigen::Vector3f pr{laserCloud.points.at(i + j).x, laserCloud.points[i + j].y, laserCloud.points[i + j].z};
+                    Eigen::Vector3f pl{laserCloud.points.at(i - j).x, laserCloud.points[i - j].y, laserCloud.points[i - j].z};
+
+                    if( (pr - pr_prev).norm() > 0.3 || (pl - pl_prev).norm() > 0.3)
+                    {
+                        toFar = true;
+                        break;
+                    }
+
+                    pr_prev = pr;
+                    pl_prev = pl;
+
+                    Eigen::Vector3f dr = (pr - p0);
+                    Eigen::Vector3f dl = (pl - p0);
+                    curv_sum += dr + dl; 
+                }
+
+                if(toFar)
+                {
+                    continue;
+                }
+
+                float curv = curv_sum.norm(); // / p0.norm();
+
+                if(curv > 0.001)
+                {
+                    features.cornerPointsSharp->push_back(laserCloud.points[i]);
+                    features.cornerPointsSharp->points.back().intensity = curv * 50;
+                }
+            }
+            
+
+        }
+        printf("seperate points time %f \n", t_pts.toc());
+
+        std::cout << "surfPointsFlat.size()        :" << features.surfPointsFlat->size() << std::endl;
+        std::cout << "surfPointsLessFlat.size()    :" << features.surfPointsLessFlat->size() << std::endl;
+        std::cout << "cornerPointsSharp.size()     :" << features.cornerPointsSharp->size() << std::endl;
+        std::cout << "cornerPointsLessSharp.size() :" << features.cornerPointsLessSharp->size() << std::endl;
+
+        return features;
+    }
+
+
     LidarFeatures extractFeaturesSimple(const std::vector<pcl::PointCloud<PointType>> &laserCloudScans)
     {
         std::vector<int> scanStartInd(N_SCANS, 0);
@@ -415,8 +587,6 @@ public:
         std::cout << "laserCloudScans.size(): " << laserCloudScans.size() << std::endl;
 
         LidarFeatures features;
-
-        std::vector<PointType> all_points;
         
         for (int i = 0; i < N_SCANS; i++)
         { 
@@ -427,7 +597,7 @@ public:
                 const double r = ((double) rand() / (RAND_MAX));
 
                 // std::cout << "dist:" << dist << "  " << r << std::endl;
-                constexpr double DIST_MAX = 300;
+                constexpr double DIST_MAX = 500;
 
                 // if(dist > 10)
                 // {
@@ -437,16 +607,18 @@ public:
                 // else 
                 if(dist / DIST_MAX > r)
                 {
-                    // features.surfPointsFlat->push_back(p);
-                    all_points.push_back(p);
+                    features.surfPointsFlat->push_back(p);
                 }
                 
             }
         }
 
-        for(const auto &p : all_points)
+        if(false)
         {
-            features.surfPointsFlat->push_back(p);
+            pcl::VoxelGrid<PointType> downSizeFilter;
+            downSizeFilter.setInputCloud(features.surfPointsFlat);
+            downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
+            downSizeFilter.filter(*features.surfPointsFlat);
         }
 
 

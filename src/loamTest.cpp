@@ -6,6 +6,7 @@
 #include <iterator>
 #include <string>
 #include <vector>
+#include <termios.h>
 
 #include <opencv2/opencv.hpp>
 #include <image_transport/image_transport.h>
@@ -21,11 +22,13 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl/common/transforms.h>
 #include <sensor_msgs/PointCloud2.h>
 
 #include "loamFeature.h"
 #include "loamScanMatching.h"
 #include "laggedMatcher.h"
+#include "loam.h"
 
 
 std::vector<float> read_lidar_data(const std::string lidar_data_path)
@@ -138,14 +141,30 @@ struct OdometryPublisher
 };
 
 
+char getch()
+{
+  static struct termios oldt, newt;
+  tcgetattr( STDIN_FILENO, &oldt);           // save old settings
+  newt = oldt;
+  newt.c_lflag &= ~(ICANON);                 // disable buffering      
+  tcsetattr( STDIN_FILENO, TCSANOW, &newt);  // apply new settings
+
+  char c = getchar();  // read character (non-blocking)
+
+  tcsetattr( STDIN_FILENO, TCSANOW, &oldt);  // restore old settings
+  return c;
+}
+
 
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "kitti_helper");
     ros::NodeHandle n("~");
     std::string dataset_folder, sequence_number, output_bag_file;
+    bool evaluation_set = false;
     n.getParam("dataset_folder", dataset_folder);
     n.getParam("sequence_number", sequence_number);
+    n.getParam("evaluation_set", evaluation_set);
     std::cout << "Reading sequence " << sequence_number << " from " << dataset_folder << '\n';
     bool to_bag;
     n.getParam("to_bag", to_bag);
@@ -179,23 +198,46 @@ int main(int argc, char** argv)
     OdometryPublisher odo_pub("/laser_odom_to_init", "/laser_odom_path", "/camera_init", "/laser_odom", n);
     OdometryPublisher gt_pub("/odometry_gt", "/path_gt", "/camera_init", "/ground_truth", n);
 
+    image_transport::ImageTransport it(n);
+    image_transport::Publisher pub_image_left = it.advertise("/image_left", 2);
 
-    // LOAMScanMatching matcher;
-    lagged::LaggedScanMatching matcher;
 
-    // // TODO: size of pose = size of lidar bin + 1??
-    // std::getline(ground_truth_file, line);
+    std::vector<PointCloudPublisher> pc_pubs;
+    for(size_t i = 0; i < 100; ++i)
+    {
+        PointCloudPublisher pc_pub("/pc_" + std::to_string(i), "/camera_init", n);
+        pc_pubs.push_back(pc_pub);
+    }
 
+    loam::LOAM loam;
+
+    size_t count = 0;
     while (std::getline(timestamp_file, line) && ros::ok())
     {
+        count++;
+        // char input_char = getch();
+        // if(input_char != 'a')
+        // {
+        //     r.sleep();
+        // }
         // float timestamp = stof(line);
 
-        // gt
-        std::getline(ground_truth_file, line);
-        Eigen::Quaterniond q_gt;
-        Eigen::Vector3d t_gt;
-        process_gt(line, q_gt, t_gt);
-        gt_pub.publish(q_gt, t_gt);
+        if(not evaluation_set)
+        {
+            // gt
+            std::getline(ground_truth_file, line);
+            Eigen::Quaterniond q_gt;
+            Eigen::Vector3d t_gt;
+            process_gt(line, q_gt, t_gt);
+            gt_pub.publish(q_gt, t_gt);
+        }
+
+        std::stringstream left_image_path;
+        left_image_path << dataset_folder << "sequences/" + sequence_number + "/image_0/" << std::setfill('0') << std::setw(6) << line_num << ".png";
+        cv::Mat left_image = cv::imread(left_image_path.str(), CV_LOAD_IMAGE_GRAYSCALE);
+        sensor_msgs::ImagePtr image_left_msg = cv_bridge::CvImage({}, "mono8", left_image).toImageMsg();
+        pub_image_left.publish(image_left_msg);
+
 
         // read lidar point cloud
         std::stringstream lidar_data_path;
@@ -208,6 +250,7 @@ int main(int argc, char** argv)
         std::vector<Eigen::Vector3d> lidar_points;
         std::vector<float> lidar_intensities;
         pcl::PointCloud<pcl::PointXYZI> laser_cloud;
+
         for (std::size_t i = 0; i < lidar_data.size(); i += 4)
         {
             lidar_points.emplace_back(lidar_data[i], lidar_data[i+1], lidar_data[i+2]);
@@ -220,37 +263,45 @@ int main(int argc, char** argv)
             point.intensity = lidar_data[i + 3];
             laser_cloud.push_back(point);
         }
-
-        scan_pub.publish_pc(laser_cloud);
-
         line_num ++;
 
-        std::vector<pcl::PointCloud<PointType>> lines = KittiDataPreprocessing().convertScanToVectorOfLines(laser_cloud);
-        
-        std::cout << "extractFeatures..." << std::endl;
-        // LidarFeatures features = LidarFeatureExtraction().extractFeatures(lines);
-        LidarFeatures features = LidarFeatureExtraction().extractFeaturesSimple(lines);
+        loam.match(laser_cloud);
 
+        // publish debug info
+        {
+            pcl::PointCloud<PointType>::Ptr laserCloud(new pcl::PointCloud<PointType>());
+            for (size_t i = 0; i < loam.curScan_.size(); i++)
+            { 
+                *laserCloud += loam.curScan_[i];
+            }
+            pc_pubs.at(2).publish_pc(*laserCloud);
 
-        flat_pub.publish_pc(*features.surfPointsFlat);
-        less_flat_pub.publish_pc(*features.surfPointsLessFlat);
-        curv_pub.publish_pc(*features.cornerPointsSharp);
-        less_curv_pub.publish_pc(*features.cornerPointsLessSharp);
+            flat_pub.publish_pc(*loam.curfeatures_.surfPointsFlat);
+            less_flat_pub.publish_pc(*loam.curfeatures_.surfPointsLessFlat);
+            curv_pub.publish_pc(*loam.curfeatures_.cornerPointsSharp);
+            less_curv_pub.publish_pc(*loam.curfeatures_.cornerPointsLessSharp);
 
-        matcher.match(features);
+            Eigen::Quaterniond q;
+            Eigen::Vector3d t;
 
-        Eigen::Quaterniond q;
-        Eigen::Vector3d t;
+            loam.getGlobalPose(q, t);
+            odo_pub.publish(q, t);
 
-        matcher.getPose(q, t);
-        odo_pub.publish(q, t);
+            std::cout << "t b2w :" << t << std::endl;
 
-        std::cout << "t b2w :" << t << std::endl;
-
+            if(loam.matcher_.accumulatedPc_ != nullptr)
+            {
+                pc_pubs.at(0).publish_pc(*loam.matcher_.accumulatedPc_);
+            }
+            if(loam.matcher_.accumulatedPc_ != nullptr)
+            {
+                pc_pubs.at(1).publish_pc(*loam.matcher_.accumulatedEdgePc_);
+            }
+        }
 
         r.sleep();
     }
-    // bag_out.close();
+
     std::cout << "Done \n";
 
 

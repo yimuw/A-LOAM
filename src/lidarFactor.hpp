@@ -129,13 +129,13 @@ struct LidarPlaneFactor
 		if(false)
 		{
 			// "robust"
-			if(dist > T{0.5})
+			if(dist > T{0.1})
 			{
 				dist = T{0.};
 			}
 		}
 
-		residual[0] = (lp - lpj).dot(ljm);
+		residual[0] = dist;
 
 
 
